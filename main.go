@@ -14,12 +14,10 @@
 package prom2json
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
-	"runtime"
 
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
 	"github.com/prometheus/common/expfmt"
@@ -30,7 +28,7 @@ import (
 
 const acceptHeader = `application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;encoding=delimited;q=0.7,text/plain;version=0.0.4;q=0.3`
 
-type metricFamily struct {
+type MetricFamily struct {
 	Name    string        `json:"name"`
 	Help    string        `json:"help"`
 	Type    string        `json:"type"`
@@ -57,8 +55,8 @@ type histogram struct {
 	Sum     string            `json:"sum"`
 }
 
-func newMetricFamily(dtoMF *dto.MetricFamily) *metricFamily {
-	mf := &metricFamily{
+func newMetricFamily(dtoMF *dto.MetricFamily) *MetricFamily {
+	mf := &MetricFamily{
 		Name:    dtoMF.GetName(),
 		Help:    dtoMF.GetHelp(),
 		Type:    dtoMF.GetType().String(),
@@ -172,21 +170,21 @@ func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily) {
 }
 
 // Parse receives a prometheus metric url and return a parsed json string
-func Parse(url string) (string, error) {
-	runtime.GOMAXPROCS(2)
-
+func Parse(url string) map[string]interface{} {
 	mfChan := make(chan *dto.MetricFamily, 1024)
 
 	go fetchMetricFamilies(url, mfChan)
 
-	result := []*metricFamily{}
+	response := []*MetricFamily{}
 	for mf := range mfChan {
-		result = append(result, newMetricFamily(mf))
-	}
-	json, err := json.Marshal(result)
-	if err != nil {
-		log.Fatalln("error marshaling JSON:", err)
+		response = append(response, newMetricFamily(mf))
 	}
 
-	return string(json), err
+	result := make(map[string]interface{})
+
+	for _, entry := range response {
+		result[entry.Name] = entry.Metrics
+	}
+
+	return result
 }

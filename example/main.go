@@ -7,11 +7,11 @@ import (
 )
 
 func main() {
-	json, err := prom2json.Parse("http://146.185.151.73:9100/metrics")
+	json := prom2json.Parse("http://146.185.151.73:9100/metrics")
 
-	if err != nil {
-		panic(err)
+	if json == nil {
+		panic("json == nil")
 	}
 
-	fmt.Printf("%s", json)
+	fmt.Printf("%v", json["node_network_transmit_bytes"])
 }
