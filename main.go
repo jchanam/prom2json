@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package prom2json
 
 import (
 	"encoding/json"
@@ -19,7 +19,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"os"
 	"runtime"
 
 	"github.com/matttproud/golang_protobuf_extensions/pbutil"
@@ -172,15 +171,13 @@ func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily) {
 	}
 }
 
-func main() {
+// Parse ...
+func Parse(url string) (interface{}, error) {
 	runtime.GOMAXPROCS(2)
-	if len(os.Args) != 2 {
-		log.Fatalf("Usage: %s METRICS_URL", os.Args[0])
-	}
 
 	mfChan := make(chan *dto.MetricFamily, 1024)
 
-	go fetchMetricFamilies(os.Args[1], mfChan)
+	go fetchMetricFamilies(url, mfChan)
 
 	result := []*metricFamily{}
 	for mf := range mfChan {
@@ -190,8 +187,6 @@ func main() {
 	if err != nil {
 		log.Fatalln("error marshaling JSON:", err)
 	}
-	if _, err := os.Stdout.Write(json); err != nil {
-		log.Fatalln("error writing to stdout:", err)
-	}
-	fmt.Println()
+
+	return json, err
 }
