@@ -171,8 +171,8 @@ func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily) {
 	}
 }
 
-// Parse ...
-func Parse(url string) (interface{}, error) {
+// Parse receives a prometheus metric url and return a parsed json string
+func Parse(url string) (string, error) {
 	runtime.GOMAXPROCS(2)
 
 	mfChan := make(chan *dto.MetricFamily, 1024)
@@ -188,5 +188,5 @@ func Parse(url string) (interface{}, error) {
 		log.Fatalln("error marshaling JSON:", err)
 	}
 
-	return json, err
+	return string(json), err
 }
