@@ -14,20 +14,16 @@
 package prom2json
 
 import (
+	"errors"
 	"fmt"
-	"io"
-	"mime"
 	"net/http"
 
-	"github.com/matttproud/golang_protobuf_extensions/pbutil"
 	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/log"
 
 	dto "github.com/prometheus/client_model/go"
 )
 
-const acceptHeader = `application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;encoding=delimited;q=0.7,text/plain;version=0.0.4;q=0.3`
-
+// MetricFamily is a collection of metrics
 type MetricFamily struct {
 	Name    string        `json:"name"`
 	Help    string        `json:"help"`
@@ -35,12 +31,13 @@ type MetricFamily struct {
 	Metrics []interface{} `json:"metrics,omitempty"` // Either metric or summary.
 }
 
-// metric is for all "single value" metrics.
+// Metric is single-value metric
 type Metric struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	Value  string            `json:"value"`
 }
 
+// Summary is a multiple-value metric
 type Summary struct {
 	Labels    map[string]string `json:"labels,omitempty"`
 	Quantiles map[string]string `json:"quantiles,omitempty"`
@@ -124,59 +121,42 @@ func makeBuckets(m *dto.Metric) map[string]string {
 	return result
 }
 
-func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily) {
-	defer close(ch)
-	req, err := http.NewRequest("GET", url, nil)
+func fetchMetricFamilies(url string) ([]*dto.MetricFamily, error) {
+
+	resp, err := http.Get(url)
 	if err != nil {
-		log.Fatalf("creating GET request for URL %q failed: %s", url, err)
-	}
-	req.Header.Add("Accept", acceptHeader)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Fatalf("executing GET request for URL %q failed: %s", url, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("GET request for URL %q returned HTTP status %s", url, resp.Status)
+		return nil, errors.New(url + " not HTTP 200 OK")
 	}
 
-	mediatype, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if err == nil && mediatype == "application/vnd.google.protobuf" &&
-		params["encoding"] == "delimited" &&
-		params["proto"] == "io.prometheus.client.MetricFamily" {
-		for {
-			mf := &dto.MetricFamily{}
-			if _, err = pbutil.ReadDelimited(resp.Body, mf); err != nil {
-				if err == io.EOF {
-					break
-				}
-				log.Fatalln("reading metric family protocol buffer failed:", err)
-			}
-			ch <- mf
-		}
-	} else {
-		// We could do further content-type checks here, but the
-		// fallback for now will anyway be the text format
-		// version 0.0.4, so just go for it and see if it works.
-		var parser expfmt.TextParser
-		metricFamilies, err := parser.TextToMetricFamilies(resp.Body)
-		if err != nil {
-			log.Fatalln("reading text format failed:", err)
-		}
-		for _, mf := range metricFamilies {
-			ch <- mf
-		}
+	var parser expfmt.TextParser
+	metrics, err := parser.TextToMetricFamilies(resp.Body)
+	if err != nil {
+		return nil, err
 	}
+
+	result := []*dto.MetricFamily{}
+	for _, metric := range metrics {
+		result = append(result, metric)
+	}
+
+	return result, nil
 }
 
 // Parse receives a prometheus metric url and return a parsed json string
-func Parse(url string) map[string][]string {
-	mfChan := make(chan *dto.MetricFamily, 1024)
+func Parse(url string) (map[string][]string, error) {
+	metrics, err := fetchMetricFamilies(url)
 
-	go fetchMetricFamilies(url, mfChan)
+	if err != nil {
+		return nil, err
+	}
 
 	response := []*MetricFamily{}
-	for mf := range mfChan {
+	for _, mf := range metrics {
 		response = append(response, newMetricFamily(mf))
 	}
 
@@ -195,5 +175,9 @@ func Parse(url string) map[string][]string {
 		}
 	}
 
-	return result
+	if result == nil {
+		return nil, errors.New("result is nil")
+	}
+
+	return result, nil
 }
