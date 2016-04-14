@@ -36,19 +36,19 @@ type MetricFamily struct {
 }
 
 // metric is for all "single value" metrics.
-type metric struct {
+type Metric struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	Value  string            `json:"value"`
 }
 
-type summary struct {
+type Summary struct {
 	Labels    map[string]string `json:"labels,omitempty"`
 	Quantiles map[string]string `json:"quantiles,omitempty"`
 	Count     string            `json:"count"`
 	Sum       string            `json:"sum"`
 }
 
-type histogram struct {
+type Histogram struct {
 	Labels  map[string]string `json:"labels,omitempty"`
 	Buckets map[string]string `json:"buckets,omitempty"`
 	Count   string            `json:"count"`
@@ -64,21 +64,21 @@ func newMetricFamily(dtoMF *dto.MetricFamily) *MetricFamily {
 	}
 	for i, m := range dtoMF.Metric {
 		if dtoMF.GetType() == dto.MetricType_SUMMARY {
-			mf.Metrics[i] = summary{
+			mf.Metrics[i] = Summary{
 				Labels:    makeLabels(m),
 				Quantiles: makeQuantiles(m),
 				Count:     fmt.Sprint(m.GetSummary().GetSampleCount()),
 				Sum:       fmt.Sprint(m.GetSummary().GetSampleSum()),
 			}
 		} else if dtoMF.GetType() == dto.MetricType_HISTOGRAM {
-			mf.Metrics[i] = histogram{
+			mf.Metrics[i] = Histogram{
 				Labels:  makeLabels(m),
 				Buckets: makeBuckets(m),
 				Count:   fmt.Sprint(m.GetHistogram().GetSampleCount()),
 				Sum:     fmt.Sprint(m.GetSummary().GetSampleSum()),
 			}
 		} else {
-			mf.Metrics[i] = metric{
+			mf.Metrics[i] = Metric{
 				Labels: makeLabels(m),
 				Value:  fmt.Sprint(getValue(m)),
 			}
@@ -170,7 +170,7 @@ func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily) {
 }
 
 // Parse receives a prometheus metric url and return a parsed json string
-func Parse(url string) map[string]interface{} {
+func Parse(url string) map[string][]string {
 	mfChan := make(chan *dto.MetricFamily, 1024)
 
 	go fetchMetricFamilies(url, mfChan)
@@ -180,10 +180,19 @@ func Parse(url string) map[string]interface{} {
 		response = append(response, newMetricFamily(mf))
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string][]string)
 
 	for _, entry := range response {
-		result[entry.Name] = entry.Metrics
+		for _, metric := range entry.Metrics {
+			if w, ok := metric.(Metric); ok {
+				result[entry.Name] = append(result[entry.Name], w.Value)
+				continue
+			}
+			if w, ok := metric.(Summary); ok {
+				result[entry.Name] = append(result[entry.Name], w.Sum)
+				continue
+			}
+		}
 	}
 
 	return result

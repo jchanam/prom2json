@@ -13,5 +13,5 @@ func main() {
 		panic("json == nil")
 	}
 
-	fmt.Printf("%v", json["node_network_transmit_bytes"])
+	fmt.Printf("%s", json["node_network_transmit_bytes"])
 }
