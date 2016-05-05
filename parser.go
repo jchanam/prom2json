@@ -165,6 +165,9 @@ func Parse(url string) (map[string][]string, error) {
 	for _, entry := range response {
 		for _, metric := range entry.Metrics {
 			if w, ok := metric.(Metric); ok {
+				if labels, ok := w.Labels; ok {
+					result[entry.Name] = append(labels)
+				}
 				result[entry.Name] = append(result[entry.Name], w.Value)
 				continue
 			}
